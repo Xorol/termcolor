@@ -24,10 +24,11 @@
 
 from __future__ import annotations
 
+import enum
 import os
 import sys
 import warnings
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 
 def __getattr__(name: str) -> list[str]:
@@ -43,56 +44,64 @@ def __getattr__(name: str) -> list[str]:
     raise AttributeError(msg)
 
 
-ATTRIBUTES = {
-    "bold": 1,
-    "dark": 2,
-    "underline": 4,
-    "blink": 5,
-    "reverse": 7,
-    "concealed": 8,
+class Flag(enum.Flag):
+  BOLD = 1
+  DARK = 2
+  UNDERLINE = 4
+  BLINK = 8
+  REVERSE = 16
+  CONCEALED = 32
+
+flag_codes = {
+  Flag.BOLD: "1",
+  Flag.DARK: "2",
+  Flag.UNDERLINE: "4",
+  Flag.BLINK: "5",
+  Flag.REVERSE: "7",
+  Flag.CONCEALED: "8"
 }
 
+def flag_to_code(flag: enum.Flag) -> str:
+  flags = [""] * 6
+  flags[:] = [flag_codes[x] if x in flag 
+              else "" 
+              for x in Flag]
+  flags = filter(lambda x: x != "", flags)
+  return ";".join(flags)
 
-HIGHLIGHTS = {
-    "on_black": 40,
-    "on_grey": 40,  # Actually black but kept for backwards compatibility
-    "on_red": 41,
-    "on_green": 42,
-    "on_yellow": 43,
-    "on_blue": 44,
-    "on_magenta": 45,
-    "on_cyan": 46,
-    "on_light_grey": 47,
-    "on_dark_grey": 100,
-    "on_light_red": 101,
-    "on_light_green": 102,
-    "on_light_yellow": 103,
-    "on_light_blue": 104,
-    "on_light_magenta": 105,
-    "on_light_cyan": 106,
-    "on_white": 107,
-}
+class BG(enum.IntEnum):
+  BLACK = 40
+  RED = 41
+  GREEN = 42
+  YELLOW = 43
+  MAGENTA = 45
+  CYAN = 46
+  LIGHT_GRAY = 47
+  DARK_GRAY = 100
+  LIGHT_RED = 101
+  LIGHT_GREEN = 102
+  LIGHT_YELLOW = 103
+  LIGHT_BLUE = 104
+  LIGHT_MAGENTA = 105
+  LIGHT_CYAN = 106
+  WHITE = 107
 
-COLORS = {
-    "black": 30,
-    "grey": 30,  # Actually black but kept for backwards compatibility
-    "red": 31,
-    "green": 32,
-    "yellow": 33,
-    "blue": 34,
-    "magenta": 35,
-    "cyan": 36,
-    "light_grey": 37,
-    "dark_grey": 90,
-    "light_red": 91,
-    "light_green": 92,
-    "light_yellow": 93,
-    "light_blue": 94,
-    "light_magenta": 95,
-    "light_cyan": 96,
-    "white": 97,
-}
-
+class FG(enum.IntEnum):
+  BLACK = 30
+  RED = 31
+  GREEN = 32
+  YELLOW = 33
+  MAGENTA = 35
+  CYAN = 36
+  LIGHT_GRAY = 37
+  DARK_GRAY = 90
+  LIGHT_RED = 91
+  LIGHT_GREEN = 92
+  LIGHT_YELLOW = 93
+  LIGHT_BLUE = 94
+  LIGHT_MAGENTA = 95
+  LIGHT_CYAN = 96
+  WHITE = 97
 
 RESET = "\033[0m"
 
@@ -128,57 +137,37 @@ def _can_do_colour(
 
 def colored(
     text: str,
-    color: str | None = None,
-    on_color: str | None = None,
-    attrs: Iterable[str] | None = None,
+    color: Optional[FG] = None,
+    background_color: Optional[BG] = None,
+    flag: Optional[Flag] = None,
     *,
-    no_color: bool | None = None,
-    force_color: bool | None = None,
+    no_color: Optional[bool] = None,
+    force_color: Optional[bool] = None,
 ) -> str:
-    """Colorize text.
-
-    Available text colors:
-        black, red, green, yellow, blue, magenta, cyan, white,
-        light_grey, dark_grey, light_red, light_green, light_yellow, light_blue,
-        light_magenta, light_cyan.
-
-    Available text highlights:
-        on_black, on_red, on_green, on_yellow, on_blue, on_magenta, on_cyan, on_white,
-        on_light_grey, on_dark_grey, on_light_red, on_light_green, on_light_yellow,
-        on_light_blue, on_light_magenta, on_light_cyan.
-
-    Available attributes:
-        bold, dark, underline, blink, reverse, concealed.
-
-    Example:
-        colored('Hello, World!', 'red', 'on_black', ['bold', 'blink'])
-        colored('Hello, World!', 'green')
-    """
     if not _can_do_colour(no_color=no_color, force_color=force_color):
-        return text
+        return text, "terminal does not support ANSI"
 
     fmt_str = "\033[%dm%s"
     if color is not None:
-        text = fmt_str % (COLORS[color], text)
+        text = fmt_str % (color, text)
 
-    if on_color is not None:
-        text = fmt_str % (HIGHLIGHTS[on_color], text)
+    if background_color is not None:
+        text = fmt_str % (background_color, text)
 
-    if attrs is not None:
-        for attr in attrs:
-            text = fmt_str % (ATTRIBUTES[attr], text)
+    if flag is not None:
+        text = "\033[%sm%s" % (flag_to_code(flag), text)
 
     return text + RESET
 
 
 def cprint(
     text: str,
-    color: str | None = None,
-    on_color: str | None = None,
-    attrs: Iterable[str] | None = None,
+    color: Optional[FG] = None,
+    background_color: Optional[BG] = None,
+    flag: Optional[Flag] = None,
     *,
-    no_color: bool | None = None,
-    force_color: bool | None = None,
+    no_color: Optional[bool] = None,
+    force_color: Optional[bool] = None,
     **kwargs: Any,
 ) -> None:
     """Print colorized text.
@@ -191,8 +180,8 @@ def cprint(
             colored(
                 text,
                 color,
-                on_color,
-                attrs,
+                background_color,
+                flag,
                 no_color=no_color,
                 force_color=force_color,
             )
